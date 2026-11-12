@@ -513,8 +513,7 @@ mod tests {
     fn the_dry_run_names_the_release_folder() {
         let r = run_release(&workspace_root(), true).unwrap();
         assert!(
-            r.folder
-                .ends_with(format!("dist/{}-0.1.0", APP.product)),
+            r.folder.ends_with(format!("dist/{}-0.1.0", APP.product)),
             "{}",
             r.folder.display()
         );
