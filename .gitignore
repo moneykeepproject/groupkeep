@@ -1,0 +1,16 @@
+target/
+*.pdf
+*.bundle
+dist/
+
+# Book side files (security-review-1 L10): the previous version kept on save and
+# half-written temporary copies.
+*.moneykeep.prev
+*.moneykeep.tmp-*
+
+# Keys and certificates are never committed (security-review-1 L10).
+*.pfx
+*.p12
+*.p8
+*.pem
+*.key

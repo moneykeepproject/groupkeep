@@ -1,0 +1,1104 @@
+import { LineEdit, ComboBox, CheckBox, SpinBox, Palette, ScrollView } from "std-widgets.slint";
+import { Theme, Card, SectionTitle, Hint, FieldLabel, BigButton, LinkButton, Chip, Badge, OptionRow, NavTab, KeyValue, Stat } from "components.slint";
+
+export { Theme }
+
+export struct ChipRow {
+    id: int,
+    label: string,
+    on: bool,
+}
+
+export struct PersonRow {
+    id: int,
+    name: string,
+    description: string,
+    shares: string,
+    days: [ChipRow],
+    days-there: string,
+}
+
+export struct ExpenseRow {
+    id: int,
+    description: string,
+    subtitle: string,
+    total: string,
+    method: string,
+    override-count: int,
+    warning: bool,
+}
+
+export struct ShareRow {
+    person-id: int,
+    name: string,
+    included: bool,
+    value: string,
+    base: string,
+    amount: string,
+    note: string,
+    overridden: bool,
+    excluded: bool,
+}
+
+export struct ItemRow {
+    description: string,
+    amount: string,
+    who: [ChipRow],
+}
+
+export struct OverrideRow {
+    id: int,
+    description: string,
+    detail: string,
+    effect: string,
+    ok: bool,
+}
+
+export struct SummaryRow {
+    name: string,
+    paid: string,
+    share: string,
+    credit: string,
+    balance: string,
+    sign: int,
+}
+
+export struct TransferRow {
+    from: string,
+    to: string,
+    amount: string,
+}
+
+export struct ContributionRow {
+    id: int,
+    description: string,
+    from: string,
+    amount: string,
+    holder: int,
+}
+
+export struct MethodRow {
+    title: string,
+    detail: string,
+}
+
+// Text field with a label above it.
+component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <string> placeholder;
+    in property <bool> number: false;
+    in-out property <string> text;
+    callback edited(string);
+    spacing: 4px;
+    horizontal-stretch: 1;
+    FieldLabel { text: root.label; }
+    LineEdit {
+        min-height: 44px;
+        min-width: 56px;
+        text <=> root.text;
+        placeholder-text: root.placeholder;
+        input-type: root.number ? InputType.decimal : InputType.text;
+        edited(t) => { root.edited(t); }
+    }
+}
+
+// Vertically scrolling page, centred and capped in width for desktops.
+component Page inherits ScrollView {
+    content-width: self.visible-width;
+    content-height: col.preferred-height + 24px;
+    col := VerticalLayout {
+        x: max(0px, (root.visible-width - self.width) / 2);
+        width: min(root.visible-width, 720px);
+        padding: 12px;
+        padding-bottom: 24px;
+        spacing: 12px;
+        @children
+    }
+}
+
+// Horizontal chip strip that scrolls sideways on narrow screens.
+component ChipStrip inherits Flickable {
+    in property <[ChipRow]> chips;
+    callback toggled(int);
+    height: 44px;
+    content-width: max(self.width, row.preferred-width);
+    interactive: row.preferred-width > self.width;
+    row := HorizontalLayout {
+        alignment: start;
+        spacing: 8px;
+        for c in root.chips: Chip {
+            text: c.label;
+            on: c.on;
+            clicked => { root.toggled(c.id); }
+        }
+    }
+}
+
+component TypeCard inherits Rectangle {
+    in property <string> title;
+    in property <string> blurb;
+    in property <bool> selected;
+    callback clicked;
+    min-height: 76px;
+    min-width: 60px;
+    preferred-width: 100px;
+    horizontal-stretch: 1;
+    border-radius: 10px;
+    background: selected ? Theme.accent-soft : Theme.card;
+    border-width: selected ? 2px : 1px;
+    border-color: selected ? Theme.accent : Theme.line;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 3px;
+        Text {
+            text: (root.selected ? "● " : "") + root.title;
+            font-size: Theme.font-body;
+            font-weight: 700;
+            color: root.selected ? Theme.accent : Theme.ink;
+        }
+        Text {
+            text: root.blurb;
+            font-size: 12px;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component AppWindow inherits Window {
+    title: "GroupKeep" + (root.file-name != "" ? " – " + root.file-name : "") + (root.dirty ? " •" : "");
+    preferred-width: 430px;
+    preferred-height: 860px;
+    min-width: 340px;
+    min-height: 560px;
+    background: Theme.bg;
+    default-font-size: Theme.font-body;
+    init => { Palette.color-scheme = ColorScheme.light; }
+
+    // ---------- navigation ----------
+    in-out property <int> page: 0;
+    in-out property <bool> editing-expense: false;
+    in property <string> file-name;
+    in property <bool> dirty;
+    in property <string> status;
+
+    // ---------- group ----------
+    in-out property <string> group-name;
+    in-out property <string> group-description;
+    in-out property <string> start-date;
+    in-out property <int> num-days: 3;
+    in property <int> type-index;
+    in property <[string]> type-labels;
+    in property <[string]> type-blurbs;
+    in-out property <int> currency-index;
+    in property <[string]> currency-labels;
+    in property <bool> uses-days;
+    in property <bool> uses-contributions;
+    in property <string> member-noun: "Person";
+    in property <string> shares-label: "Shares";
+    in property <string> trip-range;
+    in property <[ContributionRow]> contributions;
+
+    // ---------- people ----------
+    in property <[PersonRow]> people;
+    in property <[string]> people-names;
+
+    // ---------- expenses ----------
+    in property <[ExpenseRow]> expenses;
+    in-out property <string> edit-description;
+    in-out property <string> edit-date;
+    in-out property <string> edit-amount;
+    in-out property <int> edit-payer-index: -1;
+    in property <int> edit-method-index;
+    in property <[MethodRow]> edit-methods;
+    in property <string> edit-method-key;
+    in property <string> edit-value-label;
+    in property <[ShareRow]> edit-shares;
+    in property <string> edit-shares-footer;
+    in property <bool> edit-shares-footer-bad;
+    in property <[ItemRow]> edit-items;
+    in-out property <string> edit-tax;
+    in-out property <int> edit-tip-mode;
+    in-out property <string> edit-tip-value;
+    in property <string> edit-subtotal;
+    in property <string> edit-tip-amount;
+    in property <string> edit-total;
+    in property <[ChipRow]> edit-days;
+    in property <[OverrideRow]> edit-overrides;
+    in property <[string]> edit-warnings;
+    in property <[string]> edit-rounding;
+
+    // ---------- overrides ----------
+    in property <[OverrideRow]> overrides;
+    in-out property <bool> ov-open: false;
+    in property <bool> ov-is-new: true;
+    in-out property <string> ov-description;
+    in-out property <int> ov-person-index: -1;
+    in-out property <int> ov-scope-index: 0;
+    in-out property <int> ov-kind-index: 0;
+    in-out property <string> ov-value;
+    in property <[string]> ov-scope-labels;
+    in property <[string]> ov-kind-labels;
+    in property <string> ov-error;
+
+    // ---------- summary ----------
+    in property <string> total-spent;
+    in property <string> total-contrib;
+    in property <string> people-count;
+    in property <[SummaryRow]> summary;
+    in property <[TransferRow]> transfers;
+    in property <[string]> rounding-notes;
+    in property <[string]> warnings;
+    in property <bool> show-credit;
+
+    // ---------- confirm dialog ----------
+    in property <bool> confirm-open;
+    in property <string> confirm-text;
+    in property <string> confirm-yes-label: "Discard";
+
+    // ---------- callbacks ----------
+    callback group-changed();
+    callback group-type-selected(int);
+    callback currency-selected(int);
+    callback num-days-changed(int);
+    callback new-group();
+    callback open-file();
+    callback save-file();
+    callback save-file-as();
+    callback export-pdf();
+
+    callback add-person(string);
+    callback remove-person(int);
+    callback person-name-edited(int, string);
+    callback person-desc-edited(int, string);
+    callback person-shares-edited(int, string);
+    callback person-day-toggled(int, int);
+
+    callback add-expense();
+    callback open-expense(int);
+    callback close-expense();
+    callback delete-expense();
+    callback expense-field-changed();
+    callback method-selected(int);
+    callback participant-toggled(int);
+    callback all-participants(bool);
+    callback share-value-edited(int, string);
+    callback add-item();
+    callback remove-item(int);
+    callback item-desc-edited(int, string);
+    callback item-amount-edited(int, string);
+    callback item-who-toggled(int, int);
+    callback expense-day-toggled(int);
+
+    callback new-override(bool);
+    callback edit-override(int);
+    callback save-override();
+    callback delete-override();
+    callback ov-changed();
+
+    callback add-contribution();
+    callback remove-contribution(int);
+    callback contribution-edited(int, string, string, string);
+    callback contribution-holder(int, int);
+
+    callback confirm-yes();
+    callback confirm-no();
+
+    VerticalLayout {
+        // ===== App bar =====
+        Rectangle {
+            height: 58px;
+            background: Theme.accent;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 4px;
+                if root.editing-expense: Rectangle {
+                    width: 48px;
+                    Text {
+                        text: "←";
+                        color: white;
+                        font-size: 24px;
+                    }
+                    TouchArea { clicked => { root.close-expense(); } }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    padding-left: root.editing-expense ? 0 : 8px;
+                    Text {
+                        text: root.editing-expense ? "Edit expense" : (root.group-name != "" ? root.group-name : "GroupKeep");
+                        color: white;
+                        font-size: 18px;
+                        font-weight: 700;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: (root.file-name != "" ? root.file-name : "Not saved yet") + (root.dirty ? " • unsaved changes" : "");
+                        color: #ccfbf1;
+                        font-size: 12px;
+                        overflow: elide;
+                    }
+                }
+                for b[i] in [{ label: "Save", n: 0 }, { label: "PDF", n: 1 }]: Rectangle {
+                    width: 58px;
+                    border-radius: 8px;
+                    background: bta.pressed ? Theme.accent-dark : transparent;
+                    Text {
+                        text: b.label;
+                        color: white;
+                        font-size: 15px;
+                        font-weight: 600;
+                    }
+                    bta := TouchArea {
+                        clicked => {
+                            if b.n == 0 { root.save-file(); } else { root.export-pdf(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===== Pages =====
+        Rectangle {
+            vertical-stretch: 1;
+
+            // ---------- GROUP ----------
+            if root.page == 0 && !root.editing-expense: Page {
+                Card {
+                    SectionTitle { text: "Group"; }
+                    Field {
+                        label: "Name";
+                        placeholder: "e.g. Lake House Weekend";
+                        text <=> root.group-name;
+                        edited => { root.group-changed(); }
+                    }
+                    Field {
+                        label: "Description";
+                        placeholder: "What is this group for?";
+                        text <=> root.group-description;
+                        edited => { root.group-changed(); }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        FieldLabel { text: "Currency"; }
+                        ComboBox {
+                            min-height: 44px;
+                            model: root.currency-labels;
+                            current-index <=> root.currency-index;
+                            selected => { root.currency-selected(self.current-index); }
+                        }
+                    }
+                }
+                Card {
+                    SectionTitle { text: "Type"; }
+                    Hint { text: "The type sets which division methods are offered first. You can change it any time."; }
+                    for r in [0, 1, 2]: HorizontalLayout {
+                        spacing: 10px;
+                        TypeCard {
+                            title: root.type-labels[r * 2];
+                            blurb: root.type-blurbs[r * 2];
+                            selected: root.type-index == r * 2;
+                            clicked => { root.group-type-selected(r * 2); }
+                        }
+                        TypeCard {
+                            title: root.type-labels[r * 2 + 1];
+                            blurb: root.type-blurbs[r * 2 + 1];
+                            selected: root.type-index == r * 2 + 1;
+                            clicked => { root.group-type-selected(r * 2 + 1); }
+                        }
+                    }
+                }
+                if root.uses-days: Card {
+                    SectionTitle { text: "Trip dates"; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Field {
+                            label: "First day (YYYY-MM-DD)";
+                            placeholder: "2026-11-05";
+                            text <=> root.start-date;
+                            edited => { root.group-changed(); }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 130px;
+                            FieldLabel { text: "Number of days"; }
+                            SpinBox {
+                                min-height: 44px;
+                                minimum: 1;
+                                maximum: 60;
+                                value <=> root.num-days;
+                                edited(v) => { root.num-days-changed(v); }
+                            }
+                        }
+                    }
+                    Hint { text: root.trip-range; }
+                }
+                if root.uses-contributions: Card {
+                    stripe: Theme.green;
+                    SectionTitle { text: "Donations & sponsors"; }
+                    Hint { text: "Outside money that lowers what members owe, in proportion to each member's share. Pick who is holding the money."; }
+                    for c in root.contributions: Rectangle {
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 8px;
+                            Field {
+                                label: "Description";
+                                placeholder: "e.g. Sponsor banner";
+                                text: c.description;
+                                edited(t) => { root.contribution-edited(c.id, t, c.from, c.amount); }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Field {
+                                    label: "From";
+                                    placeholder: "Donor";
+                                    text: c.from;
+                                    edited(t) => { root.contribution-edited(c.id, c.description, t, c.amount); }
+                                }
+                                Field {
+                                    label: "Amount";
+                                    number: true;
+                                    placeholder: "0.00";
+                                    text: c.amount;
+                                    edited(t) => { root.contribution-edited(c.id, c.description, c.from, t); }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    FieldLabel { text: "Held by"; }
+                                    ComboBox {
+                                        min-height: 44px;
+                                        model: root.people-names;
+                                        current-index: c.holder;
+                                        selected => { root.contribution-holder(c.id, self.current-index); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: end;
+                                    LinkButton {
+                                        text: "Remove";
+                                        fg: Theme.red;
+                                        clicked => { root.remove-contribution(c.id); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    BigButton {
+                        text: "+ Add donation / sponsor";
+                        primary: false;
+                        clicked => { root.add-contribution(); }
+                    }
+                }
+                Card {
+                    SectionTitle { text: "File"; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        BigButton { text: "Open…"; primary: false; clicked => { root.open-file(); } }
+                        BigButton { text: "New"; primary: false; clicked => { root.new-group(); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        BigButton { text: "Save"; clicked => { root.save-file(); } }
+                        BigButton { text: "Save as…"; primary: false; clicked => { root.save-file-as(); } }
+                    }
+                    BigButton { text: "Export PDF…"; primary: false; clicked => { root.export-pdf(); } }
+                }
+            }
+
+            // ---------- PEOPLE ----------
+            if root.page == 1 && !root.editing-expense: Page {
+                Card {
+                    SectionTitle { text: root.member-noun == "Household" ? "Households" : "People"; }
+                    Hint {
+                        text: root.member-noun == "Household"
+                            ? "Add each household or family. Household size is used by the Shares method."
+                            : "Add everyone in the group. Shares are used by the Shares method (e.g. adult 1, child 0.5).";
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        quick := LineEdit {
+                            min-height: 48px;
+                            horizontal-stretch: 1;
+                            placeholder-text: "Name, then Add";
+                            accepted(t) => {
+                                if t != "" { root.add-person(t); self.text = ""; }
+                            }
+                        }
+                        BigButton {
+                            text: "Add";
+                            horizontal-stretch: 0;
+                            width: 90px;
+                            clicked => { root.add-person(quick.text); quick.text = ""; }
+                        }
+                    }
+                }
+                for p in root.people: Card {
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Field {
+                            label: "Name";
+                            text: p.name;
+                            edited(t) => { root.person-name-edited(p.id, t); }
+                        }
+                        VerticalLayout {
+                            width: 96px;
+                            Field {
+                                label: root.shares-label;
+                                number: true;
+                                text: p.shares;
+                                edited(t) => { root.person-shares-edited(p.id, t); }
+                            }
+                        }
+                    }
+                    Field {
+                        label: "Description";
+                        placeholder: "Optional note";
+                        text: p.description;
+                        edited(t) => { root.person-desc-edited(p.id, t); }
+                    }
+                    if root.uses-days: VerticalLayout {
+                        spacing: 4px;
+                        FieldLabel { text: "Days there (" + p.days-there + ")"; }
+                        ChipStrip {
+                            chips: p.days;
+                            toggled(d) => { root.person-day-toggled(p.id, d); }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        LinkButton {
+                            text: "Remove";
+                            fg: Theme.red;
+                            clicked => { root.remove-person(p.id); }
+                        }
+                    }
+                }
+                if root.people.length == 0: Card {
+                    Hint { text: "No one yet. Type a name above and tap Add."; }
+                }
+            }
+
+            // ---------- EXPENSES LIST ----------
+            if root.page == 2 && !root.editing-expense: Page {
+                if root.people.length == 0: Card {
+                    stripe: Theme.amber-line;
+                    Hint { text: "Add people first, then add expenses."; }
+                }
+                for e in root.expenses: Card {
+                    clickable: true;
+                    clicked => { root.open-expense(e.id); }
+                    stripe: e.override-count > 0 ? Theme.amber-line : (e.warning ? Theme.red : Theme.accent);
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 3px;
+                            Text {
+                                text: e.description;
+                                font-size: 16px;
+                                font-weight: 700;
+                                color: Theme.ink;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: e.subtitle;
+                                font-size: 13px;
+                                color: Theme.muted;
+                                overflow: elide;
+                            }
+                        }
+                        Text {
+                            text: e.total;
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: Theme.ink;
+                            vertical-alignment: center;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        Badge { text: e.method; }
+                        if e.override-count > 0: Badge {
+                            text: e.override-count + (e.override-count == 1 ? " override" : " overrides");
+                            fg: Theme.amber;
+                            fill: Theme.amber-soft;
+                        }
+                        if e.warning: Badge { text: "check"; fg: Theme.red; fill: Theme.red-soft; }
+                    }
+                }
+                BigButton {
+                    text: "+ Add expense";
+                    enabled: root.people.length > 0;
+                    clicked => { root.add-expense(); }
+                }
+            }
+
+            // ---------- EXPENSE EDITOR ----------
+            if root.editing-expense: Page {
+                Card {
+                    SectionTitle { text: "Details"; }
+                    Field {
+                        label: "Description";
+                        placeholder: "e.g. Groceries";
+                        text <=> root.edit-description;
+                        edited => { root.expense-field-changed(); }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Field {
+                            label: "Date";
+                            placeholder: "YYYY-MM-DD";
+                            text <=> root.edit-date;
+                            edited => { root.expense-field-changed(); }
+                        }
+                        if root.edit-method-key != "item": Field {
+                            label: "Amount";
+                            number: true;
+                            placeholder: "0.00";
+                            text <=> root.edit-amount;
+                            edited => { root.expense-field-changed(); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        FieldLabel { text: "Paid by"; }
+                        ComboBox {
+                            min-height: 44px;
+                            model: root.people-names;
+                            current-index <=> root.edit-payer-index;
+                            selected => { root.expense-field-changed(); }
+                        }
+                    }
+                    KeyValue { label: "Total"; value: root.edit-total; strong: true; }
+                }
+
+                Card {
+                    SectionTitle { text: "Division method"; }
+                    for m[i] in root.edit-methods: OptionRow {
+                        title: m.title;
+                        detail: root.edit-method-index == i ? m.detail : "";
+                        selected: root.edit-method-index == i;
+                        clicked => { root.method-selected(i); }
+                    }
+                }
+
+                if root.edit-method-key == "item": Card {
+                    SectionTitle { text: "Items"; }
+                    Hint { text: "Tap who had each item. Leave everyone off to share it with all."; }
+                    for it[i] in root.edit-items: Rectangle {
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Field {
+                                    label: "Item";
+                                    placeholder: "e.g. Pizza";
+                                    text: it.description;
+                                    edited(t) => { root.item-desc-edited(i, t); }
+                                }
+                                VerticalLayout {
+                                    width: 100px;
+                                    Field {
+                                        label: "Price";
+                                        number: true;
+                                        placeholder: "0.00";
+                                        text: it.amount;
+                                        edited(t) => { root.item-amount-edited(i, t); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: end;
+                                    LinkButton {
+                                        text: "✕";
+                                        fg: Theme.red;
+                                        min-width: 40px;
+                                        clicked => { root.remove-item(i); }
+                                    }
+                                }
+                            }
+                            ChipStrip {
+                                chips: it.who;
+                                toggled(pid) => { root.item-who-toggled(i, pid); }
+                            }
+                        }
+                    }
+                    BigButton { text: "+ Add item"; primary: false; clicked => { root.add-item(); } }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Field {
+                            label: "Tax";
+                            number: true;
+                            placeholder: "0.00";
+                            text <=> root.edit-tax;
+                            edited => { root.expense-field-changed(); }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            FieldLabel { text: "Tip"; }
+                            ComboBox {
+                                min-height: 44px;
+                                model: ["No tip", "Percent", "Amount"];
+                                current-index <=> root.edit-tip-mode;
+                                selected => { root.expense-field-changed(); }
+                            }
+                        }
+                    }
+                    if root.edit-tip-mode > 0: Field {
+                        label: root.edit-tip-mode == 1 ? "Tip percent (of subtotal)" : "Tip amount";
+                        number: true;
+                        text <=> root.edit-tip-value;
+                        edited => { root.expense-field-changed(); }
+                    }
+                    KeyValue { label: "Subtotal"; value: root.edit-subtotal; }
+                    KeyValue { label: "Tip"; value: root.edit-tip-amount; }
+                }
+
+                if root.edit-method-key == "attendance": Card {
+                    SectionTitle { text: "Days covered"; }
+                    Hint { text: "Each day's cost is split among whoever was there that day (set on the People tab)."; }
+                    ChipStrip {
+                        chips: root.edit-days;
+                        toggled(d) => { root.expense-day-toggled(d); }
+                    }
+                }
+
+                Card {
+                    HorizontalLayout {
+                        SectionTitle { text: "Who's splitting"; horizontal-stretch: 1; vertical-alignment: center; }
+                        LinkButton { text: "All"; clicked => { root.all-participants(true); } }
+                        LinkButton { text: "None"; clicked => { root.all-participants(false); } }
+                    }
+                    for s in root.edit-shares: Rectangle {
+                        border-radius: 10px;
+                        background: s.overridden ? Theme.amber-soft : transparent;
+                        border-width: 1px;
+                        border-color: s.overridden ? Theme.amber-line : Theme.line;
+                        VerticalLayout {
+                            padding: 6px;
+                            padding-left: 8px;
+                            spacing: 2px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                CheckBox {
+                                    text: s.name;
+                                    checked: s.included;
+                                    horizontal-stretch: 1;
+                                    min-height: 40px;
+                                    toggled => { root.participant-toggled(s.person-id); }
+                                }
+                                if root.edit-value-label != "" && s.included && !s.excluded: LineEdit {
+                                    width: 84px;
+                                    min-height: 40px;
+                                    input-type: InputType.decimal;
+                                    placeholder-text: root.edit-value-label;
+                                    text: s.value;
+                                    edited(t) => { root.share-value-edited(s.person-id, t); }
+                                }
+                                Text {
+                                    width: 96px;
+                                    text: s.amount;
+                                    font-size: 16px;
+                                    font-weight: 700;
+                                    color: s.excluded ? Theme.muted : Theme.ink;
+                                    horizontal-alignment: right;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            if s.note != "": Text {
+                                text: s.note;
+                                font-size: 12px;
+                                color: s.overridden ? Theme.amber : Theme.muted;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    if root.edit-shares-footer != "": Text {
+                        text: root.edit-shares-footer;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: root.edit-shares-footer-bad ? Theme.red : Theme.green;
+                    }
+                    for n in root.edit-rounding: Hint { text: "⚖ " + n; }
+                }
+
+                Card {
+                    stripe: Theme.amber-line;
+                    fill: root.edit-overrides.length > 0 ? #fffbeb : Theme.card;
+                    SectionTitle { text: "Overrides on this expense"; color: Theme.amber; }
+                    if root.edit-overrides.length == 0: Hint { text: "None. Use an override to make one person pay a set amount, more, less, or nothing; the rest is re-split among the others."; }
+                    for o in root.edit-overrides: Rectangle {
+                        border-radius: 10px;
+                        background: Theme.amber-soft;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 2px;
+                            Text { text: o.description; font-weight: 700; color: Theme.amber; wrap: word-wrap; }
+                            Text { text: o.detail; font-size: 13px; color: Theme.ink; wrap: word-wrap; }
+                            Text { text: o.effect; font-size: 13px; color: o.ok ? Theme.ink : Theme.red; wrap: word-wrap; }
+                        }
+                        TouchArea { clicked => { root.edit-override(o.id); } }
+                    }
+                    BigButton { text: "+ Add override"; primary: false; clicked => { root.new-override(true); } }
+                }
+
+                if root.edit-warnings.length > 0: Card {
+                    stripe: Theme.red;
+                    for w in root.edit-warnings: Text { text: "⚠ " + w; color: Theme.red; font-size: 13px; wrap: word-wrap; }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    BigButton { text: "Delete expense"; primary: false; danger: true; clicked => { root.delete-expense(); } }
+                    BigButton { text: "Done"; clicked => { root.close-expense(); } }
+                }
+            }
+
+            // ---------- OVERRIDES ----------
+            if root.page == 3 && !root.editing-expense: Page {
+                Card {
+                    stripe: Theme.amber-line;
+                    SectionTitle { text: "Overrides"; color: Theme.amber; }
+                    Hint { text: "Manual changes to the calculated split. Every override needs a description so everyone can see why. The difference is re-split among the others in proportion to their shares."; }
+                }
+                for o in root.overrides: Card {
+                    stripe: Theme.amber-line;
+                    fill: #fffbeb;
+                    clickable: true;
+                    clicked => { root.edit-override(o.id); }
+                    Text { text: o.description; font-size: 16px; font-weight: 700; color: Theme.amber; wrap: word-wrap; }
+                    Text { text: o.detail; font-size: 14px; color: Theme.ink; wrap: word-wrap; }
+                    Text { text: o.effect; font-size: 14px; color: o.ok ? Theme.muted : Theme.red; wrap: word-wrap; }
+                }
+                if root.overrides.length == 0: Card { Hint { text: "No overrides yet."; } }
+                BigButton {
+                    text: "+ Add override";
+                    enabled: root.people.length > 0;
+                    clicked => { root.new-override(false); }
+                }
+            }
+
+            // ---------- SUMMARY ----------
+            if root.page == 4 && !root.editing-expense: Page {
+                HorizontalLayout {
+                    spacing: 8px;
+                    Stat { label: "Total spent"; value: root.total-spent; }
+                    Stat { label: root.member-noun == "Household" ? "Households" : "People"; value: root.people-count; }
+                    Stat { label: "Overrides"; value: root.overrides.length; warn: root.overrides.length > 0; }
+                }
+                if root.show-credit: Stat { label: "Donations & sponsors"; value: root.total-contrib; }
+                Card {
+                    SectionTitle { text: "Settle up"; }
+                    if root.transfers.length == 0: Hint { text: "Everyone is even. No payments needed."; }
+                    for t in root.transfers: Rectangle {
+                        min-height: 52px;
+                        border-radius: 10px;
+                        background: Theme.accent-soft;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            Text { text: t.from; font-weight: 700; color: Theme.ink; vertical-alignment: center; }
+                            Text { text: "pays"; color: Theme.muted; vertical-alignment: center; }
+                            Text { text: t.to; font-weight: 700; color: Theme.ink; vertical-alignment: center; horizontal-stretch: 1; }
+                            Text { text: t.amount; font-size: 17px; font-weight: 700; color: Theme.accent; vertical-alignment: center; }
+                        }
+                    }
+                }
+                Card {
+                    SectionTitle { text: "Each person"; }
+                    for s in root.summary: VerticalLayout {
+                        spacing: 4px;
+                        HorizontalLayout {
+                            Text { text: s.name; font-size: 16px; font-weight: 700; color: Theme.ink; horizontal-stretch: 1; vertical-alignment: center; }
+                            Badge {
+                                text: s.balance;
+                                fg: s.sign > 0 ? Theme.green : s.sign < 0 ? Theme.red : Theme.muted;
+                                fill: s.sign > 0 ? Theme.green-soft : s.sign < 0 ? Theme.red-soft : Theme.line;
+                            }
+                        }
+                        Text {
+                            text: "Paid " + s.paid + "  •  Share " + s.share + (root.show-credit ? "  •  Credit " + s.credit : "");
+                            font-size: 13px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                        Rectangle { height: 1px; background: Theme.line; }
+                    }
+                }
+                if root.overrides.length > 0: Card {
+                    stripe: Theme.amber-line;
+                    SectionTitle { text: "Overrides applied"; color: Theme.amber; }
+                    for o in root.overrides: VerticalLayout {
+                        spacing: 1px;
+                        Text { text: o.description; font-weight: 700; color: Theme.amber; wrap: word-wrap; }
+                        Text { text: o.detail + " — " + o.effect; font-size: 13px; color: Theme.ink; wrap: word-wrap; }
+                    }
+                }
+                if root.rounding-notes.length > 0: Card {
+                    SectionTitle { text: "Rounding"; }
+                    Hint { text: "Leftover pennies go to the payer of that expense (group-wide adjustments: the top payer):"; }
+                    for n in root.rounding-notes: Text { text: "• " + n; font-size: 13px; color: Theme.ink; wrap: word-wrap; }
+                }
+                if root.warnings.length > 0: Card {
+                    stripe: Theme.red;
+                    SectionTitle { text: "Check these"; color: Theme.red; }
+                    for w in root.warnings: Text { text: "⚠ " + w; font-size: 13px; color: Theme.red; wrap: word-wrap; }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    BigButton { text: "Save"; clicked => { root.save-file(); } }
+                    BigButton { text: "Export PDF…"; primary: false; clicked => { root.export-pdf(); } }
+                }
+            }
+
+            // ---------- status toast ----------
+            if root.status != "": Rectangle {
+                y: parent.height - self.height - 12px;
+                x: (parent.width - self.width) / 2;
+                width: min(parent.width - 24px, toast.preferred-width + 32px);
+                height: toast.preferred-height + 20px;
+                border-radius: 10px;
+                background: #1e293bee;
+                toast := Text {
+                    width: parent.width - 32px;
+                    text: root.status;
+                    color: white;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        // ===== Bottom navigation =====
+        if !root.editing-expense: Rectangle {
+            background: Theme.card;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #0f172a1a;
+            HorizontalLayout {
+                NavTab { icon: "⚙"; label: "Group"; active: root.page == 0; clicked => { root.page = 0; } }
+                NavTab { icon: "☺"; label: root.member-noun == "Household" ? "Homes" : "People"; active: root.page == 1; clicked => { root.page = 1; } }
+                NavTab { icon: "$"; label: "Expenses"; active: root.page == 2; clicked => { root.page = 2; } }
+                NavTab { icon: "✎"; label: "Overrides"; active: root.page == 3; badge: root.overrides.length; clicked => { root.page = 3; } }
+                NavTab { icon: "Σ"; label: "Summary"; active: root.page == 4; clicked => { root.page = 4; } }
+            }
+        }
+    }
+
+    // ===== Override editor sheet =====
+    if root.ov-open: Rectangle {
+        background: #0f172a80;
+        TouchArea { }
+        Rectangle {
+            y: max(40px, parent.height - self.height);
+            height: min(parent.height - 40px, sheet.preferred-height + 8px);
+            width: min(parent.width, 720px);
+            x: (parent.width - self.width) / 2;
+            background: Theme.bg;
+            border-top-left-radius: 18px;
+            border-top-right-radius: 18px;
+            ScrollView {
+              content-width: self.visible-width;
+              content-height: sheet.preferred-height;
+              sheet := VerticalLayout {
+                width: parent.visible-width;
+                padding: 16px;
+                spacing: 12px;
+                Text {
+                    text: root.ov-is-new ? "New override" : "Edit override";
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: Theme.amber;
+                }
+                Field {
+                    label: "Description (required) — why is this override here?";
+                    placeholder: "e.g. Dee slept on the couch";
+                    text <=> root.ov-description;
+                    edited => { root.ov-changed(); }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    FieldLabel { text: "Who"; }
+                    ComboBox {
+                        min-height: 44px;
+                        model: root.people-names;
+                        current-index <=> root.ov-person-index;
+                        selected => { root.ov-changed(); }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    FieldLabel { text: "Applies to"; }
+                    ComboBox {
+                        min-height: 44px;
+                        model: root.ov-scope-labels;
+                        current-index <=> root.ov-scope-index;
+                        selected => { root.ov-changed(); }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    FieldLabel { text: "Change"; }
+                    for k[i] in root.ov-kind-labels: OptionRow {
+                        title: k;
+                        detail: "";
+                        selected: root.ov-kind-index == i;
+                        min-height: 44px;
+                        clicked => { root.ov-kind-index = i; root.ov-changed(); }
+                    }
+                }
+                if root.ov-kind-index != 3: Field {
+                    label: root.ov-kind-index == 0 ? "Pays exactly" : root.ov-kind-index == 1 ? "Amount (use - for less)" : "Percent (use - for less)";
+                    number: true;
+                    placeholder: root.ov-kind-index == 2 ? "-50" : "0.00";
+                    text <=> root.ov-value;
+                    edited => { root.ov-changed(); }
+                }
+                if root.ov-error != "": Text { text: root.ov-error; color: Theme.red; font-size: 13px; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    if !root.ov-is-new: BigButton { text: "Delete"; primary: false; danger: true; clicked => { root.delete-override(); } }
+                    BigButton { text: "Cancel"; primary: false; clicked => { root.ov-open = false; } }
+                    BigButton { text: "Save"; clicked => { root.save-override(); } }
+                }
+              }
+            }
+        }
+    }
+
+    // ===== Confirm dialog =====
+    if root.confirm-open: Rectangle {
+        background: #0f172a80;
+        TouchArea { }
+        Rectangle {
+            width: min(parent.width - 40px, 420px);
+            height: dlg.preferred-height;
+            background: Theme.card;
+            border-radius: 16px;
+            dlg := VerticalLayout {
+                padding: 18px;
+                spacing: 16px;
+                Text { text: root.confirm-text; font-size: 16px; color: Theme.ink; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    BigButton { text: "Cancel"; primary: false; clicked => { root.confirm-no(); } }
+                    BigButton { text: root.confirm-yes-label; danger: true; clicked => { root.confirm-yes(); } }
+                }
+            }
+        }
+    }
+}

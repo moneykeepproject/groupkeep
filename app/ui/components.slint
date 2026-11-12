@@ -1,0 +1,312 @@
+// Shared, touch-friendly building blocks (48px+ tap targets).
+
+export global Theme {
+    out property <color> accent: #0f766e;
+    out property <color> accent-dark: #115e59;
+    out property <color> accent-soft: #dcf2ef;
+    out property <color> bg: #f1f5f4;
+    out property <color> card: #ffffff;
+    out property <color> ink: #1e293b;
+    out property <color> muted: #64748b;
+    out property <color> line: #e2e8f0;
+    out property <color> amber: #92400e;
+    out property <color> amber-soft: #fef3c7;
+    out property <color> amber-line: #f59e0b;
+    out property <color> red: #b91c1c;
+    out property <color> red-soft: #fee2e2;
+    out property <color> green: #15803d;
+    out property <color> green-soft: #dcfce7;
+    out property <length> radius: 12px;
+    out property <length> tap: 48px;
+    out property <length> font-small: 13px;
+    out property <length> font-body: 15px;
+    out property <length> font-title: 18px;
+}
+
+export component Card inherits Rectangle {
+    in property <color> stripe: transparent;
+    in property <color> fill: Theme.card;
+    in property <bool> clickable: false;
+    callback clicked;
+    background: fill;
+    border-radius: Theme.radius;
+    drop-shadow-blur: 6px;
+    drop-shadow-color: #0f172a14;
+    drop-shadow-offset-y: 1px;
+    Rectangle {
+        x: 0;
+        width: 5px;
+        background: stripe;
+        border-top-left-radius: Theme.radius;
+        border-bottom-left-radius: Theme.radius;
+    }
+    if root.clickable: TouchArea { clicked => { root.clicked(); } }
+    VerticalLayout {
+        padding: 14px;
+        padding-left: 16px;
+        spacing: 10px;
+        @children
+    }
+}
+
+export component SectionTitle inherits Text {
+    font-size: Theme.font-title;
+    font-weight: 700;
+    color: Theme.ink;
+}
+
+export component Hint inherits Text {
+    font-size: Theme.font-small;
+    color: Theme.muted;
+    wrap: word-wrap;
+}
+
+export component FieldLabel inherits Text {
+    font-size: 12px;
+    font-weight: 600;
+    color: Theme.muted;
+}
+
+// Primary / secondary / danger buttons, full-width friendly.
+export component BigButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: true;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    min-height: Theme.tap;
+    min-width: 64px;
+    horizontal-stretch: 1;
+    border-radius: 10px;
+    background: !enabled ? Theme.line
+        : danger ? (ta.pressed ? #991b1b : primary ? Theme.red : Theme.card)
+        : primary ? (ta.pressed ? Theme.accent-dark : Theme.accent)
+        : (ta.pressed ? Theme.accent-soft : Theme.card);
+    border-width: primary ? 0 : 1.5px;
+    border-color: danger ? Theme.red : Theme.accent;
+    Text {
+        text: root.text;
+        font-size: Theme.font-body;
+        font-weight: 600;
+        color: !root.enabled ? Theme.muted : root.primary ? white : root.danger ? Theme.red : Theme.accent;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Small text button (e.g. "Remove").
+export component LinkButton inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Theme.accent;
+    callback clicked;
+    min-height: 40px;
+    min-width: 56px;
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    background: ta.pressed ? Theme.line : transparent;
+    Text {
+        text: root.text;
+        color: root.fg;
+        font-size: 14px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Toggle pill.
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked;
+    height: 40px;
+    min-width: txt.preferred-width + 28px;
+    border-radius: 20px;
+    background: on ? Theme.accent : (ta.pressed ? Theme.accent-soft : Theme.card);
+    border-width: 1.5px;
+    border-color: on ? Theme.accent : Theme.line;
+    txt := Text {
+        text: (root.on ? "✓ " : "") + root.text;
+        color: root.on ? white : Theme.ink;
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// A small coloured label.
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Theme.accent;
+    in property <color> fill: Theme.accent-soft;
+    height: 24px;
+    width: t.preferred-width + 16px;
+    border-radius: 12px;
+    background: fill;
+    t := Text {
+        text: root.text;
+        color: root.fg;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Radio-style option row with a title and explanation.
+export component OptionRow inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    in property <bool> selected;
+    callback clicked;
+    min-height: Theme.tap + 8px;
+    border-radius: 10px;
+    background: selected ? Theme.accent-soft : (ta.pressed ? #f8fafc : Theme.card);
+    border-width: selected ? 2px : 1px;
+    border-color: selected ? Theme.accent : Theme.line;
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 12px;
+        VerticalLayout {
+          alignment: center;
+          Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            border-width: 2px;
+            border-color: root.selected ? Theme.accent : Theme.muted;
+            Rectangle {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: root.selected ? Theme.accent : transparent;
+            }
+          }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.title;
+                font-size: Theme.font-body;
+                font-weight: 600;
+                color: Theme.ink;
+            }
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: 13px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Bottom navigation tab.
+export component NavTab inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> active;
+    in property <int> badge: 0;
+    callback clicked;
+    min-height: 60px;
+    horizontal-stretch: 1;
+    background: ta.pressed ? Theme.accent-soft : transparent;
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.icon;
+            font-size: 20px;
+            color: root.active ? Theme.accent : Theme.muted;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.active ? 700 : 400;
+            color: root.active ? Theme.accent : Theme.muted;
+            horizontal-alignment: center;
+        }
+    }
+    if root.badge > 0: Rectangle {
+        x: parent.width / 2 + 6px;
+        y: 6px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: Theme.amber-line;
+        Text {
+            text: root.badge;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+        }
+    }
+    Rectangle {
+        y: 0;
+        height: 3px;
+        width: 40%;
+        background: root.active ? Theme.accent : transparent;
+        border-radius: 2px;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Row of figures: label on left, value on right.
+export component KeyValue inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> strong: false;
+    in property <color> value-color: Theme.ink;
+    spacing: 8px;
+    Text {
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.font-body;
+        horizontal-stretch: 1;
+        vertical-alignment: center;
+    }
+    Text {
+        text: root.value;
+        color: root.value-color;
+        font-size: root.strong ? 17px : Theme.font-body;
+        font-weight: root.strong ? 700 : 500;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+// Stat tile used on the summary page.
+export component Stat inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> warn: false;
+    horizontal-stretch: 1;
+    min-height: 64px;
+    border-radius: 10px;
+    background: warn ? Theme.amber-soft : Theme.accent-soft;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 2px;
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: 600;
+            color: root.warn ? Theme.amber : Theme.muted;
+        }
+        Text {
+            text: root.value;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.ink;
+        }
+    }
+}
