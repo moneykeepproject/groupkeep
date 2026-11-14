@@ -1,7 +1,7 @@
 # Known limits
 
-What GroupKeep 0.1.0 doesn't do yet. This list is updated with each release. For what
-it does do, see the [release notes](release-notes/0.1.0.md).
+What GroupKeep 0.1.1 doesn't do yet. This list is updated with each release. For what
+it does do, see the [release notes](release-notes/0.1.1.md).
 
 ## Splitting
 
