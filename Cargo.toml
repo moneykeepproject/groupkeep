@@ -4,7 +4,7 @@ resolver = "2"
 members = ["core", "app", "xtask"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["MoneyKeep Project contributors"]
 license = "MIT OR Apache-2.0"

@@ -2,7 +2,7 @@
 
 Divide a group's expenses. Part of the MoneyKeep family (Rust + Slint).
 
-Version 0.1.1: [release notes](docs/release-notes/0.1.1.md) · [known limits](docs/known-limits.md).
+Version 0.1.2: [release notes](docs/release-notes/0.1.2.md) · [known limits](docs/known-limits.md).
 
 ## Build & run
 
