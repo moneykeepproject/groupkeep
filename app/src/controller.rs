@@ -5,6 +5,7 @@
 //! when their shape is unchanged (so text fields keep focus while typing) and fully reset when the
 //! shape changes or a different expense is opened.
 
+use crate::dialogs::{self, Ask};
 use crate::*;
 use groupkeep_core::calc::{self, trim_num, Report};
 use groupkeep_core::model::*;
@@ -55,6 +56,8 @@ struct Models {
 
 pub struct Controller {
     ui: Weak<AppWindow>,
+    /// This controller, for a file dialog's answer that arrives later (macOS).
+    me: std::rc::Weak<Controller>,
     st: RefCell<State>,
     m: Models,
     toast_timer: slint::Timer,
@@ -117,8 +120,9 @@ fn methods_for(g: &Group, e: &Expense) -> Vec<Method> {
 
 impl Controller {
     pub fn setup(ui: &AppWindow) -> Rc<Controller> {
-        let ctl = Rc::new(Controller {
+        let ctl = Rc::new_cyclic(|me| Controller {
             ui: ui.as_weak(),
+            me: me.clone(),
             st: RefCell::new(State::default()),
             m: Models::default(),
             toast_timer: slint::Timer::default(),
@@ -685,19 +689,48 @@ impl Controller {
         }
     }
 
-    fn save(&self, ask: bool) {
-        let mut path = self.st.borrow().path.clone();
-        if ask || path.is_none() {
-            let mut dlg = rfd::FileDialog::new()
-                .set_title("Save group")
-                .add_filter("GroupKeep group", &[FILE_EXTENSION])
-                .set_file_name(format!("{}.{}", self.safe_name(), FILE_EXTENSION));
-            if let Some(d) = self.default_dir() {
-                dlg = dlg.set_directory(d);
+    /// Show a file dialog; `then` runs with the chosen path (never when cancelled).
+    /// macOS answers on a later turn of the event loop; elsewhere `then` runs before
+    /// this returns (see `dialogs`).
+    fn choose(&self, ask: Ask, then: impl FnOnce(&Controller, PathBuf) + 'static) {
+        if !dialogs::ANSWER_LATER {
+            if let Some(p) = ask.run_blocking() {
+                then(self, p);
             }
-            path = dlg.save_file();
+            return;
         }
-        let Some(mut p) = path else { return };
+        let me = self.me.clone();
+        let shown = ask.run_later();
+        let task = async move {
+            if let Some(p) = shown.await {
+                if let Some(c) = me.upgrade() {
+                    then(&c, p);
+                }
+            }
+        };
+        if let Err(e) = slint::spawn_local(task) {
+            self.toast(format!("Could not open the file dialog: {}", e));
+        }
+    }
+
+    fn save(&self, ask: bool) {
+        let path = self.st.borrow().path.clone();
+        match path {
+            Some(p) if !ask => self.save_to(p),
+            _ => {
+                let mut dlg = Ask::save()
+                    .title("Save group")
+                    .filter("GroupKeep group", &[FILE_EXTENSION])
+                    .file_name(format!("{}.{}", self.safe_name(), FILE_EXTENSION));
+                if let Some(d) = self.default_dir() {
+                    dlg = dlg.directory(d);
+                }
+                self.choose(dlg, |c, p| c.save_to(p));
+            }
+        }
+    }
+
+    fn save_to(&self, mut p: PathBuf) {
         if p.extension().is_none() {
             p.set_extension(FILE_EXTENSION);
         }
@@ -717,14 +750,17 @@ impl Controller {
     }
 
     fn export_pdf(&self) {
-        let mut dlg = rfd::FileDialog::new()
-            .set_title("Export PDF")
-            .add_filter("PDF", &["pdf"])
-            .set_file_name(format!("{}.pdf", self.safe_name()));
+        let mut dlg = Ask::save()
+            .title("Export PDF")
+            .filter("PDF", &["pdf"])
+            .file_name(format!("{}.pdf", self.safe_name()));
         if let Some(d) = self.default_dir() {
-            dlg = dlg.set_directory(d);
+            dlg = dlg.directory(d);
         }
-        let Some(mut p) = dlg.save_file() else { return };
+        self.choose(dlg, |c, p| c.export_pdf_to(p));
+    }
+
+    fn export_pdf_to(&self, mut p: PathBuf) {
         if p.extension().is_none() {
             p.set_extension("pdf");
         }
@@ -740,15 +776,13 @@ impl Controller {
     }
 
     fn open_dialog(&self) {
-        let mut dlg = rfd::FileDialog::new()
-            .set_title("Open group")
-            .add_filter("GroupKeep group", &[FILE_EXTENSION]);
+        let mut dlg = Ask::file()
+            .title("Open group")
+            .filter("GroupKeep group", &[FILE_EXTENSION]);
         if let Some(d) = self.default_dir() {
-            dlg = dlg.set_directory(d);
+            dlg = dlg.directory(d);
         }
-        if let Some(p) = dlg.pick_file() {
-            self.open_path(p);
-        }
+        self.choose(dlg, |c, p| c.open_path(p));
     }
 
     fn ask(&self, what: Pending, text: &str, yes: &str) {
